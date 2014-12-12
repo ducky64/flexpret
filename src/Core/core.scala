@@ -9,6 +9,7 @@ package Core
 
 import Chisel._
 import FlexpretConstants._
+import FlexpretTests._
 
 case class FlexpretConfiguration(threads: Int, iMemKB: Int, dMemKB: Int, exceptions: Boolean)
 {
@@ -131,22 +132,28 @@ class Core(confIn: FlexpretConfiguration) extends Module
 }
 
 object CoreMain {
-  def main(args: Array[String]): Unit = { 
+  def main(args: Array[String]): Unit = {
+    val runArg = args(0)
+    var chiselArgs = args.slice(1, args.length)
+    var coreConfig = new FlexpretConfiguration(4, 16, 16, true)
     
-    val confString = args(0)
-    val chiselArgs = args.slice(1, args.length)
-
-    val parsed = """(\d+)t(.*)-(\d+)i-(\d+)d""".r.findFirstMatchIn(confString)
-    // TODO: print error/warning message
-    val coreConfig = if(parsed.isEmpty) new FlexpretConfiguration(4, 16, 16, true)
-                     else new FlexpretConfiguration(parsed.get.group(1).toInt,
-                                                    parsed.get.group(3).toInt,
-                                                    parsed.get.group(4).toInt,
-                                                    true)
-    
-      
-    // Pass configuration to FlexPRET processor.
-    chiselMain( chiselArgs, () => Module(new Core(coreConfig)) )
-
-   }
+    if (chiselArgs.length > 0) {
+      val confString = chiselArgs(0)
+      val parsed = """(\d+)t(.*)-(\d+)i-(\d+)d""".r.findFirstMatchIn(confString)
+      // TODO: print error/warning message
+      coreConfig = FlexpretConfiguration(parsed.get.group(1).toInt,
+                                         parsed.get.group(3).toInt,
+                                         parsed.get.group(4).toInt,
+                                         true)
+      chiselArgs = chiselArgs.slice(1, args.length)
+    }
+   
+    runArg match {
+      case "spiTest" =>
+        chiselMainTest(chiselArgs, () => Module(new Core(coreConfig))){
+          c => new SpiTest(c)}
+      case _ =>      
+        chiselMain(chiselArgs, () => Module(new Core(coreConfig)))
+    }
+  }
 }

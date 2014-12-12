@@ -147,12 +147,18 @@ object CoreMain {
                                          true)
       chiselArgs = chiselArgs.slice(1, args.length)
     }
-   
+   println("CoreMain " + runArg)
     runArg match {
       case "spiTest" =>
+        println("running SPI test")
         chiselMainTest(chiselArgs, () => Module(new Core(coreConfig))){
           c => new SpiTest(c)}
-      case _ =>      
+      case "isaTest" =>
+        println("running ISA tests")
+        chiselMainTest(chiselArgs, () => Module(new Core(coreConfig))){
+          c => new IsaTest(c, "../tests/isa/build/emulator/addi")}
+      case _ =>
+        println("default, running ChiselMain")
         chiselMain(chiselArgs, () => Module(new Core(coreConfig)))
     }
   }

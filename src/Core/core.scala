@@ -137,7 +137,8 @@ object CoreMain {
     var chiselArgs = args.slice(1, args.length)
     var coreConfig = new FlexpretConfiguration(4, 16, 16, true)
     
-    if (chiselArgs.length > 0) {
+    // TODO: FIXME: Add parameter parsing back in.
+    /*if (chiselArgs.length > 0) {
       val confString = chiselArgs(0)
       val parsed = """(\d+)t(.*)-(\d+)i-(\d+)d""".r.findFirstMatchIn(confString)
       // TODO: print error/warning message
@@ -146,15 +147,12 @@ object CoreMain {
                                          parsed.get.group(4).toInt,
                                          true)
       chiselArgs = chiselArgs.slice(1, args.length)
-    }
-   println("CoreMain " + runArg)
+    }*/
     runArg match {
       case "spiTest" =>
-        println("running SPI test")
         chiselMainTest(chiselArgs, () => Module(new Core(coreConfig))){
           c => new SpiTest(c)}
       case "isaTest" =>
-        println("running ISA tests")
         chiselMainTest(chiselArgs, () => Module(new Core(coreConfig))){
           c => new IsaTest(c, "../tests/isa/build/emulator/addi")}
       case _ =>

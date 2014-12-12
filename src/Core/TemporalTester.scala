@@ -18,8 +18,8 @@ class TemporalTesterTimer[+T <: Module](val tester: TemporalTester[T]) {
 }
 
 // TODO: should isTrace be passed?
-class TemporalTester[+T <: Module](c: T, val frequency:Int)
-                                   extends Tester(c, true) {
+class TemporalTester[+T <: Module](c: T, val frequency:Int, isTrace: Boolean = false)
+                                   extends Tester(c, isTrace) {
   var cycle: Int = 0
   override def step(n: Int) {
     cycle = cycle + n

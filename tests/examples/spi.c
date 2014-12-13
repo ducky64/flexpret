@@ -22,16 +22,16 @@ uint8_t SPI_transfer(uint8_t write_byte, uint8_t read_byte)
 	}
 	uint8_t to_write = 0;
 	to_write = (clk_bit << 2) | (read_bit << 1) | data_bit;
-        gpio_write(to_write);
+        gpo_write(to_write);
 	periodic_delay(&clk, PERIOD/2);
 	clk_bit = 0;
 	result = result << 1;
-	if (gpio_read() & 0x2) {
+	if (gpi_read() & 0x2) {
 	    result = result | 0x1;
 	}
 	    
 	to_write = (clk_bit << 2) | (read_bit << 1) | data_bit;
-	gpio_write(to_write);
+	gpo_write(to_write);
 	periodic_delay(&clk, PERIOD/2);
 	clk_bit = 1;
     }

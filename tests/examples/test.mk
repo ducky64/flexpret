@@ -7,7 +7,9 @@ gpio \
 delay_until \
 sync_comm \
 duty_comm \
-both_comm
+both_comm \
+spi \
+breaker
 
 C_STARTUP = startup
 RISCV_S_OPTS += -DT0_FREQ=1

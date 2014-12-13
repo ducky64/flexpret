@@ -134,58 +134,58 @@ class Core(confIn: FlexpretConfiguration) extends Module
 class CommandResponseQueueCoreIO(implicit conf: FlexpretConfiguration) extends Bundle
 {
   val gpio = new GPIO()
-  val commandIn = Decoupled(UInt(32))      // from external to Core
-  val respOut = Decoupled(UInt(32)).flip   // from Core to external
+  val commandIn = Decoupled(Bits(INPUT, 32)) // from external to Core
+  val respOut = Decoupled(Bits(OUTPUT, 32)).flip        // from Core to external
 }
 
 class CommandResponseQueueCore(confIn: FlexpretConfiguration) extends Module
 {
   implicit val conf = confIn
   
-  val core = new Core(confIn) 
+  val core = Module(new Core(confIn)) 
   val io = new CommandResponseQueueCoreIO()
   
   // Host interface data queues & definitions
   val COMMAND_IN_DATA_ADDR = UInt(0xffff8800)
   val COMMAND_IN_VALID_ADDR = UInt(0xffff8801)
-  val commandInQueue = Queue(io.commandIn, 1)
+  val commandInQueue = Queue(io.commandIn.flip, 1)
   
-  val respOutEnqIo = Decoupled(UInt(0, 32))
+  val respOutEnqIo = Decoupled(Bits(INPUT, 32))
   val RESP_OUT_DATA_ADDR = UInt(0xffff8810)
   val RESP_OUT_READY_ADDR = UInt(0xffff8811)
-  val respOutQueue = Queue(respOutEnqIo, 1)
-  respOutQueue <> io.respOut
+  val respOutQueue = Queue(respOutEnqIo.flip, 1)
+  respOutQueue <> io.respOut.flip
   
+  respOutEnqIo.bits := core.io.bus.data_out
   // Connections to bus IO
-  when (core.io.bus.enable) {
-    switch(core.io.bus.addr) {
-      is(COMMAND_IN_DATA_ADDR) {
+  when (core.io.bus.enable === Bool(true)) {
+    switch (core.io.bus.addr) {
+      is (COMMAND_IN_DATA_ADDR) {
         assert(io.commandIn.valid, "attempted read from invalid cmd data")
         assert(!core.io.bus.write, "attempted write to cmd valid")
         commandInQueue.ready := Bool(true) 
         respOutEnqIo.valid := Bool(false)
-        core.io.bus.data_in := commandInQueue.bits
+        core.io.bus.data_out := commandInQueue.bits
       }
       is(COMMAND_IN_VALID_ADDR) {
         assert(!core.io.bus.write, "attempted write to cmd valid")
-        commandInQueue.ready := Bool(false)
-        respOutEnqIo.valid := Bool(false)
-        core.io.bus.data_in := commandInQueue.valid
+        core.io.bus.data_out := commandInQueue.valid
       }
       is(RESP_OUT_DATA_ADDR) {
         assert(respOutEnqIo.ready, "attempted write to full resp data")
         assert(core.io.bus.write, "attempted read from resp data")     
-        commandInQueue.ready := Bool(false)
         respOutEnqIo.valid := Bool(true)
-        respOutEnqIo.bits := core.io.bus.data_out
+        respOutEnqIo.bits := core.io.bus.data_in
       }
       is(RESP_OUT_READY_ADDR) {
         assert(!core.io.bus.write, "attempted write to resp ready")
-        commandInQueue.ready := Bool(false)
-        respOutEnqIo.valid := Bool(false)
-        core.io.bus.data_in := respOutEnqIo.ready
+        core.io.bus.data_out := respOutEnqIo.ready
       }
     }
+  } .otherwise {
+    commandInQueue.ready := Bool(false) 
+    respOutEnqIo.valid := Bool(false)
+    core.io.bus.data_out := UInt(0x55aa55aa, 32)
   }
 }
 
@@ -208,10 +208,13 @@ object CoreMain {
     }*/
     runArg match {
       case "spiTest" =>
-        chiselMainTest(chiselArgs, () => Module(new Core(coreConfig))){
+        chiselMainTest(chiselArgs, () => Module(new CommandResponseQueueCore(coreConfig))){
           c => new SpiTest(c)}
+      case "breakerTest" =>
+        chiselMainTest(chiselArgs, () => Module(new CommandResponseQueueCore(coreConfig))){
+          c => new IsaTest(c, "../tests/examples/build/emulator/breaker")}
       case "isaTest" =>
-        chiselMainTest(chiselArgs, () => Module(new Core(coreConfig))){
+        chiselMainTest(chiselArgs, () => Module(new CommandResponseQueueCore(coreConfig))){
           c => new IsaTest(c, "../tests/isa/build/emulator/addi")}
       case _ =>
         println("default, running ChiselMain")

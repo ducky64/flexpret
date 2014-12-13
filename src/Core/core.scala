@@ -131,6 +131,64 @@ class Core(confIn: FlexpretConfiguration) extends Module
 
 }
 
+class CommandResponseQueueCoreIO(implicit conf: FlexpretConfiguration) extends Bundle
+{
+  val gpio = new GPIO()
+  val commandIn = Decoupled(UInt(32))      // from external to Core
+  val respOut = Decoupled(UInt(32)).flip   // from Core to external
+}
+
+class CommandResponseQueueCore(confIn: FlexpretConfiguration) extends Module
+{
+  implicit val conf = confIn
+  
+  val core = new Core(confIn) 
+  val io = new CommandResponseQueueCoreIO()
+  
+  // Host interface data queues & definitions
+  val COMMAND_IN_DATA_ADDR = UInt(0xffff8800)
+  val COMMAND_IN_VALID_ADDR = UInt(0xffff8801)
+  val commandInQueue = Queue(io.commandIn, 1)
+  
+  val respOutEnqIo = Decoupled(UInt(0, 32))
+  val RESP_OUT_DATA_ADDR = UInt(0xffff8810)
+  val RESP_OUT_READY_ADDR = UInt(0xffff8811)
+  val respOutQueue = Queue(respOutEnqIo, 1)
+  respOutQueue <> io.respOut
+  
+  // Connections to bus IO
+  when (core.io.bus.enable) {
+    switch(core.io.bus.addr) {
+      is(COMMAND_IN_DATA_ADDR) {
+        assert(io.commandIn.valid, "attempted read from invalid cmd data")
+        assert(!core.io.bus.write, "attempted write to cmd valid")
+        commandInQueue.ready := Bool(true) 
+        respOutEnqIo.valid := Bool(false)
+        core.io.bus.data_in := commandInQueue.bits
+      }
+      is(COMMAND_IN_VALID_ADDR) {
+        assert(!core.io.bus.write, "attempted write to cmd valid")
+        commandInQueue.ready := Bool(false)
+        respOutEnqIo.valid := Bool(false)
+        core.io.bus.data_in := commandInQueue.valid
+      }
+      is(RESP_OUT_DATA_ADDR) {
+        assert(respOutEnqIo.ready, "attempted write to full resp data")
+        assert(core.io.bus.write, "attempted read from resp data")     
+        commandInQueue.ready := Bool(false)
+        respOutEnqIo.valid := Bool(true)
+        respOutEnqIo.bits := core.io.bus.data_out
+      }
+      is(RESP_OUT_READY_ADDR) {
+        assert(!core.io.bus.write, "attempted write to resp ready")
+        commandInQueue.ready := Bool(false)
+        respOutEnqIo.valid := Bool(false)
+        core.io.bus.data_in := respOutEnqIo.ready
+      }
+    }
+  }
+}
+
 object CoreMain {
   def main(args: Array[String]): Unit = {
     val runArg = args(0)

@@ -61,7 +61,7 @@ class TemporalTesterTimer[+T <: Module](val tester: TemporalTester[T]) {
       currentCycle += 1
     }
     
-    while (currentCycle < targetCycleMax) {
+    while (currentCycle <= targetCycleMax) {
       if (tester.peek(data) == x) {
         cycle += deltaCycleAdvance
         return

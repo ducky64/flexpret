@@ -4,54 +4,74 @@
 #include <stdio.h>
 
 #define PERIOD 10000 
-unsigned int clk = 1;
+
+uint8_t make_gpo(uint8_t clock, uint8_t mosi) {
+  return ((clock << 2) | mosi);
+}
+uint8_t data_bit(uint8_t data, uint8_t bit) {
+  if (data & (1 << bit)) {
+    return 1;
+  } else {
+    return 0;
+  }
+}
 
 uint8_t SPI_transfer(uint8_t write_byte, uint8_t cpol, uint8_t cpha)
 {
-    uint32_t clk;
+  uint32_t clk;
 
-    uint8_t result = 0;
+  uint8_t next_out_byte;
+  uint8_t bit = 0;
 
-    uint8_t clk_bit = cpol;
-    uint8_t phase = cpha;
+  uint8_t result = 0;
 
-    uint8_t out_mask_bit = 0x80;
-    uint8_t out_data_bit = !((write_byte & out_mask_bit) == 0);
+  // calculate the next GPIO byte before doing the delay to reduce jitter
+  if (cpha == 0) {
+    next_out_byte = make_gpo(cpol, data_bit(write_byte, 7-bit));
+  } else {
+    next_out_byte = make_gpo(!cpol, data_bit(write_byte, 7-bit));
+  }
 
-    if (!cpha) {
-      // if cpha == 0, do a dummy half-cycle
-      uint8_t to_write = ((clk_bit << 2) | out_data_bit);
-      gpo_write(to_write);
+  while (bit < 8) {
+    // new data on lines here
+    if (bit == 0) {
+      gpo_write(next_out_byte);
+    } else {
+      // though gpo_write could be factored out after the loop, it's kept
+      // together with periodic_delay to encourage repeatable timing with the
+      // second half-cycle
       periodic_delay(&clk, PERIOD/2);
+      gpo_write(next_out_byte);
     }
 
-    while (out_mask_bit) {
-      if (!phase) {    // phase = 0, capture
-        result = result << 1;
-        if (gpi_read() & 0x01) {
-          result |= 0x01;    
-        }
-        out_mask_bit = out_mask_bit >> 1;
-      } else {    // phase = 1, new data
-        out_data_bit = !((write_byte & out_mask_bit) == 0);
-      }
-
-      clk_bit = !clk_bit;
-      phase = !phase;
-
-      uint8_t to_write = ((clk_bit << 2) | out_data_bit);
-      gpo_write(to_write);
-      periodic_delay(&clk, PERIOD/2);
+    if (cpha == 0) {
+      next_out_byte = make_gpo(!cpol, data_bit(write_byte, 7-bit));
+    } else {
+      next_out_byte = make_gpo(cpol, data_bit(write_byte, 7-bit));
     }
 
-    // ensure clock line returns to idle polarity
-    if (clk_bit != cpol) {
-      uint8_t to_write = ((cpol << 2) | out_data_bit);
-      gpo_write(to_write);
-      periodic_delay(&clk, PERIOD/2);
+    if (bit == 0) {
+      clk = get_time();
     }
+    periodic_delay(&clk, PERIOD/2);
+    gpo_write(next_out_byte);  // data sampled here
 
-    return result;
+    result = result << 1;
+    result |= data_bit(gpi_read(), 0);
+
+    bit++;
+    if (cpha == 0) {
+      next_out_byte = make_gpo(cpol, data_bit(write_byte, 7-bit));
+    } else {
+      next_out_byte = make_gpo(!cpol, data_bit(write_byte, 7-bit));
+    }
+  }
+
+  next_out_byte = make_gpo(cpol, 0);  // return to idle
+  periodic_delay(&clk, PERIOD/2);
+  gpo_write(next_out_byte);
+
+  return result;
 }
 
 int main(void)

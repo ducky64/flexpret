@@ -112,7 +112,7 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
   RiscvHelper.loadMem(this, c.core.dmem.dspm, "../tests/examples/build/emulator/spi.data.mem")
   println("done")
   
-  expectSpiHost(1000, 50, 8,
+  expectSpiHost(1000, 0, 8,
                 c.io.gpio_out_broken(2), c.io.gpio_out_broken(0), c.io.gpio_in_broken(0),
                 0, 0,
                 Array(0, 1, 0, 0, 1, 0, 1, 0), Array(0, 0, 0, 0, 0, 0, 0, 0))

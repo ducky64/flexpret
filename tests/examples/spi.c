@@ -8,6 +8,9 @@ unsigned int clk = 1;
 
 uint8_t SPI_transfer(uint8_t write_byte)
 {
+
+    gpo_clear(0x10000000);
+
     uint8_t result = 0;
     uint8_t bit = 0x80;
     uint8_t clk_bit = 0;
@@ -19,7 +22,6 @@ uint8_t SPI_transfer(uint8_t write_byte)
 	}
 	uint8_t read_bit = 0;
 	uint8_t to_write = 0;
-	//to_write = direction ? ((clk_bit << 2) |data_bit) : ((clk_bit << 2) | (data_bit << 1));
 	to_write = ((clk_bit << 2) | data_bit );
         gpo_write(to_write);
 	periodic_delay(&clk, PERIOD/2);
@@ -31,12 +33,14 @@ uint8_t SPI_transfer(uint8_t write_byte)
 	     result |= bit;	
 	}
 
-	//to_write = direction ? ((clk_bit << 2) | data_bit) : ((clk_bit << 2) | (data_bit << 1));
 	to_write = ((clk_bit << 2) | data_bit );
 	gpo_write(to_write);
 	periodic_delay(&clk, PERIOD/2);
 	clk_bit = 1;
     }
+
+    gpo_set(0x10000000);
+
     return result;
 }
 

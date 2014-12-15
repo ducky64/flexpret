@@ -145,6 +145,8 @@ class CommandResponseQueueCore(confIn: FlexpretConfiguration) extends Module
   val core = Module(new Core(confIn)) 
   val io = new CommandResponseQueueCoreIO()
   
+  io.gpio <> core.io.gpio
+  
   // Host interface data queues & definitions
   val COMMAND_IN_DATA_ADDR = UInt(0xffff8800)
   val COMMAND_IN_VALID_ADDR = UInt(0xffff8801)

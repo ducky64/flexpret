@@ -3,9 +3,9 @@ package FlexpretTests
 import Chisel._
 
 class TemporalTesterTimer[+T <: Module](val tester: TemporalTester[T]) {
-  var cycle: Int = 0
+  var cycle: BigInt = 0
   
-  def setCycle(newCycle: Int) {
+  def setCycle(newCycle: BigInt) {
     cycle = newCycle
   }
   
@@ -23,7 +23,9 @@ class TemporalTesterTimer[+T <: Module](val tester: TemporalTester[T]) {
   /**
    * Expect that a signal will be equal to something in the specified interval,
    * offset from the Timer's current cycle (which MAY be different from the
-   * Tester's cycle!).
+   * Tester's cycle!). When this function returns, it will be on the cycle
+   * where the signal first changed (or fail, if the expected transition did not
+   * happen.
    * @param[in] deltaCycleMin: start of the interval where the signal should be
    * equal, it is an error for the signal to be equal before this.
    * @param[in] deltaCycleAdvance: "center" of the interval where the signal
@@ -35,8 +37,8 @@ class TemporalTesterTimer[+T <: Module](val tester: TemporalTester[T]) {
    * @param[in] betweenConstants: a map of nodes to their expect values before
    * the signal is equal.
    */
-  def expectEqualsAtAndAdvance(data: Bits, x: BigInt, deltaCycleMin: Int,
-                               deltaCycleAdvance: Int, deltaCycleMax: Int,
+  def expectEqualsAtAndAdvance(data: Bits, x: BigInt, deltaCycleMin: BigInt,
+                               deltaCycleAdvance: BigInt, deltaCycleMax: BigInt,
                                desc: String = "",
                                betweenConstants: Map[Bits, BigInt] = Map()) {
     val targetCycleMin = cycle + deltaCycleMin
@@ -75,8 +77,9 @@ class TemporalTesterTimer[+T <: Module](val tester: TemporalTester[T]) {
    * A wrapper around expectEqualsAtAndAdvance, calculating the interval in 
    * terms of a center time +/- allowable jitter.
    */
-  def expectEqualsAtCentered(data: Bits, x: BigInt, deltaCycleCenter: Int, 
-                             allowableJitter: Int, desc: String = "",
+  def expectEqualsAtCentered(data: Bits, x: BigInt,
+                             deltaCycleCenter: BigInt, allowableJitter: BigInt,
+                             desc: String = "",
                              betweenConstants: Map[Bits, BigInt] = Map()) {
     assert (allowableJitter <= deltaCycleCenter)
     
@@ -111,5 +114,11 @@ class TemporalTester[+T <: Module](c: T, val frequency:Int,
     while (peek(data) == value) {
       step(1)
     }
+  }
+  
+  def createTimerAtNow(): TemporalTesterTimer[T] = {
+    val timer = new TemporalTesterTimer(this)
+    timer.setCycle(cycle)
+    timer
   }
 }

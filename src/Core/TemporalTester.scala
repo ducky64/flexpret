@@ -48,8 +48,10 @@ class TemporalTesterTimer[+T <: Module](val tester: TemporalTester[T]) {
     
     assert(deltaCycleMin <= deltaCycleAdvance
            && deltaCycleAdvance <= deltaCycleMax)
-    assert(targetCycleMin >= currentCycle)
-    assert(targetCycleMax >= currentCycle)
+    assert(targetCycleMin >= currentCycle,
+           s"Interval start $targetCycleMin < current $currentCycle")
+    assert(targetCycleMax >= currentCycle,
+           s"Interval end $targetCycleMax < current $currentCycle")
     
     while (currentCycle < targetCycleMin) {
       tester.expect(tester.peek(data) != x, 
@@ -71,6 +73,7 @@ class TemporalTesterTimer[+T <: Module](val tester: TemporalTester[T]) {
     }
     
     tester.expect(false, s"$msgHeader: ${data.name} did not equal $x during interval")
+    assert(false, s"$msgHeader: ${data.name} did not equal $x during interval")
   }
   
   /**
@@ -81,7 +84,7 @@ class TemporalTesterTimer[+T <: Module](val tester: TemporalTester[T]) {
                              deltaCycleCenter: BigInt, allowableJitter: BigInt,
                              desc: String = "",
                              betweenConstants: Map[Bits, BigInt] = Map()) {
-    assert (allowableJitter <= deltaCycleCenter)
+    assert(allowableJitter <= deltaCycleCenter)
     
     expectEqualsAtAndAdvance(data, x, deltaCycleCenter - allowableJitter,
                              deltaCycleCenter,

@@ -133,7 +133,8 @@ class Core(confIn: FlexpretConfiguration) extends Module
 
 class CommandResponseQueueCoreIO(implicit conf: FlexpretConfiguration) extends Bundle
 {
-  val gpio = new GPIO()
+  val gpio_in_broken = Vec.fill(8){Bits(INPUT, 1)}
+  val gpio_out_broken = Vec.fill(8){Bits(OUTPUT, 1)}
   val commandIn = Decoupled(Bits(INPUT, 32)) // from external to Core
   val respOut = Decoupled(Bits(OUTPUT, 32)).flip        // from Core to external
 }
@@ -145,7 +146,18 @@ class CommandResponseQueueCore(confIn: FlexpretConfiguration) extends Module
   val core = Module(new Core(confIn)) 
   val io = new CommandResponseQueueCoreIO()
   
-  io.gpio <> core.io.gpio
+  // TODO dehackify this once Chisel emulator can access bitslices
+  core.io.gpio.in(0) := Cat(io.gpio_in_broken(7),
+                       io.gpio_in_broken(6),
+                       io.gpio_in_broken(5),
+                       io.gpio_in_broken(4),
+                       io.gpio_in_broken(3),
+                       io.gpio_in_broken(3),
+                       io.gpio_in_broken(1),
+                       io.gpio_in_broken(0))
+  for (i <- 0 until 8) {
+    io.gpio_out_broken(i) := core.io.gpio.out(0)(i)
+  }
   
   // Host interface data queues & definitions
   val COMMAND_IN_DATA_ADDR = UInt(0xffff8800)

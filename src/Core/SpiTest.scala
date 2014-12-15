@@ -66,30 +66,42 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
     val timer = createTimerAtNow()
     var bit: Int = 0
     while (bit < numBits) {
+      println(s"Cycle $cycle, clk ${peek(clkLine)}, MOSI ${peek(mosiLine)}")
       if (isFirst) {
         println("Step to equals ... ")
         stepUntilEqual(clkLine, bitInv(currentClock))
-        println("done")
         timer.setCycle(cycle)
+        isFirst = false
       } else {
-        println(s"Waiting for bit $bit, phase $clockPhase ... ")
+        println(s"Waiting for bit $bit, action $nextAction ... ")
         timer.expectEqualsAtCentered(clkLine, bitInv(currentClock),
                                      period/2, allowableJitter,
                                      desc="SPI clock transition",
                                      betweenConstants=Map(clkLine -> currentClock))
-        println("done")
+        stepUntilEqual(clkLine, bitInv(currentClock))
       }
-      if (clockPhase == 0) { // capture
+      if (nextAction == 0) { // capture
+        println(s"Got bit $bit = ${peek(mosiLine)}")
         expect(peek(mosiLine) == expectedFromHost(bit), 
                s"$msgHeader: bit $bit: MOSI ${mosiLine.name} mismatch")
         bit += 1
-      } else if (clockPhase == 1) {  // change
+      } else if (nextAction == 1) {  // change
         poke(misoLine, dataToHost(bit))
       } else {
         assert(false)
       }
       nextAction = bitInv(nextAction)
       currentClock = bitInv(currentClock)
+    }
+    
+    // Special case to handle when clockPhase=0, to verify that it does return
+    // to the idle state.
+    if (currentClock != clockPolarity) {
+      assert bitInv(currentClock == clockPolarity)
+      timer.expectEqualsAtCentered(clkLine, bitInv(currentClock),
+                                   period/2, allowableJitter,
+                                   desc="SPI clock transition",
+                                   betweenConstants=Map(clkLine -> currentClock))
     }
   }
   
@@ -100,8 +112,8 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
   RiscvHelper.loadMem(this, c.core.dmem.dspm, "../tests/examples/build/emulator/spi.data.mem")
   println("done")
   
-  expectSpiHost(10000, 10, 8,
-                c.io.gpio.in(0)(2), c.io.gpio.in(0)(0), c.io.gpio.out(0)(0),
-                0, 0,
+  expectSpiHost(1000, 10, 8,
+                c.io.gpio_out_broken(2), c.io.gpio_out_broken(0), c.io.gpio_in_broken(0),
+                1, 1,
                 Array(0, 1, 0, 0, 1, 0, 1, 0), Array(0, 0, 0, 0, 0, 0, 0, 0))
 } 

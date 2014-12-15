@@ -17,18 +17,21 @@ class IsaTest(c: CommandResponseQueueCore, memPrefix: String) extends TemporalTe
   dataToHost.intValue >> 30 match {
     case 0 =>
       if (dataToHost == 1) {
-        println("**  TEST: Passed: $dataToHost")
+        println(s"**  TEST: Passed (result=$dataToHost)")
       } else {
-        println(s"**  TEST: FAILED: $dataToHost")
+        println(s"**  TEST: FAILED (result=$dataToHost)")
         ok = false  
       }
     case 1 =>
       // TODO: make this continue
-      println("    TEST: Threading message")
+      println("    TEST: Threading message (???)")
+      assert(false, "Implement me!")
     case 2 =>
-      println("    TEST: Timing message")
+      println("    TEST: Timing message (???)")
+      assert(false, "Implement me!")
     case 3 =>
       println("    TEST: ???")
+      assert(false, "Implement me!")
   }
   
   println(s"    TEST: Total cycles: $cycle")

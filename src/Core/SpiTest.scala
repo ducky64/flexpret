@@ -34,9 +34,9 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
                     clockPolarity: Int, clockPhase: Int,
                     expectedFromHost: Array[Int], dataToHost: Array[Int],
                     desc: String = "") {
-    //assert(clkLine.width == 1)  # TODO: how to access this?
-    //assert(mosiLine.width == 1)
-    //assert(misoLine.width == 1)
+    assert(clkLine.getWidth() == 1)
+    assert(mosiLine.getWidth() == 1)
+    assert(misoLine.getWidth() == 1)
     assert(numBits > 0)
     assert(expectedFromHost.length == numBits)
     assert(dataToHost.length == numBits)
@@ -97,7 +97,7 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
     // Special case to handle when clockPhase=0, to verify that it does return
     // to the idle state.
     if (currentClock != clockPolarity) {
-      assert bitInv(currentClock == clockPolarity)
+      assert(bitInv(currentClock) == clockPolarity)
       timer.expectEqualsAtCentered(clkLine, bitInv(currentClock),
                                    period/2, allowableJitter,
                                    desc="SPI clock transition",

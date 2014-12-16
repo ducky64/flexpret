@@ -3,8 +3,6 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define PERIOD 10000 
-
 uint8_t make_gpo(uint8_t clock, uint8_t mosi) {
   return ((clock << 2) | mosi);
 }
@@ -16,7 +14,7 @@ uint8_t data_bit(uint8_t data, uint8_t bit) {
   }
 }
 
-uint8_t SPI_transfer(uint8_t write_byte, uint8_t cpol, uint8_t cpha)
+uint8_t SPI_transfer(uint8_t write_byte, uint32_t period, uint8_t cpol, uint8_t cpha)
 {
   uint32_t clk;
 
@@ -36,13 +34,13 @@ uint8_t SPI_transfer(uint8_t write_byte, uint8_t cpol, uint8_t cpha)
     // new data on lines here
     if (bit == 0) {
       clk = get_time();
-      periodic_delay(&clk, PERIOD/2);
+      periodic_delay(&clk, period/2);
       gpo_write(next_out_byte);
     } else {
       // though gpo_write could be factored out after the loop, it's kept
       // together with periodic_delay to encourage repeatable timing with the
       // second half-cycle
-      periodic_delay(&clk, PERIOD/2);
+      periodic_delay(&clk, period/2);
       gpo_write(next_out_byte);
     }
 
@@ -52,7 +50,7 @@ uint8_t SPI_transfer(uint8_t write_byte, uint8_t cpol, uint8_t cpha)
       next_out_byte = make_gpo(cpol, data_bit(write_byte, 7-bit));
     }
 
-    periodic_delay(&clk, PERIOD/2);
+    periodic_delay(&clk, period/2);
     gpo_write(next_out_byte);  // data sampled here
 
     result = result << 1;
@@ -67,7 +65,7 @@ uint8_t SPI_transfer(uint8_t write_byte, uint8_t cpol, uint8_t cpha)
   }
 
   next_out_byte = make_gpo(cpol, 0);  // return to idle
-  periodic_delay(&clk, PERIOD/2);
+  periodic_delay(&clk, period/2);
   gpo_write(next_out_byte);
 
   return result;
@@ -80,10 +78,15 @@ uint8_t SPI_transfer(uint8_t write_byte, uint8_t cpol, uint8_t cpha)
 #define RESPONSE_OUT_READY *((volatile uint32_t*)(0xffff8811))
 
 #define OP_TRANSFER 0x00
+#define OP_SETPERIOD 0x01
+#define OP_SETPOLARITY 0x02
 
 int main(void)
 {
-    uint8_t cpha = 0, cpol = 0;
+    uint32_t period = 10000;
+    uint8_t cpol = 0, cpha = 0;
+    gpo_write(make_gpo(cpol, 0));
+
     while (1) {
       while (!COMMAND_IN_VALID);
 
@@ -92,9 +95,15 @@ int main(void)
       uint32_t data = received_command & 0x00ffffff;  // truncate to 24 bits
 
       if (opcode == OP_TRANSFER) {
-        uint8_t result = SPI_transfer(data, 0, 0);
+        uint8_t result = SPI_transfer(data, period, cpol, cpha);
         while (!RESPONSE_OUT_READY);
         RESPONSE_OUT_DATA = result;
+      } else if (opcode == OP_SETPERIOD) {
+        period = data;
+      } else if (opcode == OP_SETPOLARITY) {
+        cpol = data_bit(data, 1);
+        cpha = data_bit(data, 0);
+        gpo_write(make_gpo(cpol, 0));
       }
     }
     return 1;

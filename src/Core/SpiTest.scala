@@ -143,12 +143,21 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
   
   reset(5)  // TODO: justify the number
   
-  sendCommand(0x0000004a)
-  
+  sendCommand(0x01000000 | 10000);  // set clock
+  sendCommand(0x02000000 | 0x0);    // set CPOL=0, CPHA=0
+  sendCommand(0x00000000 | 0x4a);   // transfer data byte
   expectSpiHost(1000, 0, 8,
                 c.io.gpio_out_broken(2), c.io.gpio_out_broken(0), c.io.gpio_in_broken(0),
                 0, 0,
                 Array(0, 1, 0, 0, 1, 0, 1, 0), Array(0, 1, 0, 1, 0, 0, 1, 0))
-                
   expect(getResponse() == 0x52, "SPI response 0x4a => 0x52")
+  
+  sendCommand(0x01000000 | 1000);  // set clock
+  sendCommand(0x02000000 | 0x3);    // set CPOL=1, CPHA=1
+  sendCommand(0x00000000 | 0x2a);   // transfer data byte
+  expectSpiHost(100, 0, 8,
+                c.io.gpio_out_broken(2), c.io.gpio_out_broken(0), c.io.gpio_in_broken(0),
+                1, 1,
+                Array(0, 0, 1, 0, 1, 0, 1, 0), Array(1, 0, 1, 0, 1, 0, 1, 0))
+  expect(getResponse() == 0xaa, "SPI response 0x4a => 0xAA")
 } 

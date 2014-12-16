@@ -170,20 +170,23 @@ class CommandResponseQueueCore(confIn: FlexpretConfiguration) extends Module
   val respOutQueue = Queue(respOutEnqIo.flip, 1)
   respOutQueue <> io.respOut.flip
   
+  val bus_data_out_reg = Reg(UInt(0, 32))
+  core.io.bus.data_out := bus_data_out_reg
+  
   respOutEnqIo.bits := core.io.bus.data_out
   // Connections to bus IO
   when (core.io.bus.enable === Bool(true)) {
     switch (core.io.bus.addr) {
       is (COMMAND_IN_DATA_ADDR) {
-        assert(io.commandIn.valid, "attempted read from invalid cmd data")
+        assert(commandInQueue.valid, "attempted read from invalid cmd data")
         assert(!core.io.bus.write, "attempted write to cmd valid")
         commandInQueue.ready := Bool(true) 
         respOutEnqIo.valid := Bool(false)
-        core.io.bus.data_out := commandInQueue.bits
+        bus_data_out_reg := commandInQueue.bits
       }
       is(COMMAND_IN_VALID_ADDR) {
         assert(!core.io.bus.write, "attempted write to cmd valid")
-        core.io.bus.data_out := commandInQueue.valid
+        bus_data_out_reg := commandInQueue.valid
       }
       is(RESP_OUT_DATA_ADDR) {
         assert(respOutEnqIo.ready, "attempted write to full resp data")
@@ -193,13 +196,13 @@ class CommandResponseQueueCore(confIn: FlexpretConfiguration) extends Module
       }
       is(RESP_OUT_READY_ADDR) {
         assert(!core.io.bus.write, "attempted write to resp ready")
-        core.io.bus.data_out := respOutEnqIo.ready
+        bus_data_out_reg := respOutEnqIo.ready
       }
     }
   } .otherwise {
     commandInQueue.ready := Bool(false) 
     respOutEnqIo.valid := Bool(false)
-    core.io.bus.data_out := UInt(0x55aa55aa, 32)
+    bus_data_out_reg := UInt(0x5a5a5a5a, 32)
   }
 }
 

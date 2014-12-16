@@ -29,8 +29,7 @@ class TemporalTesterTimer[+T <: Module](val tester: TemporalTester[T]) {
    * @param[in] deltaCycleMin: start of the interval where the signal should be
    * equal, it is an error for the signal to be equal before this.
    * @param[in] deltaCycleAdvance: "center" of the interval where the signal
-   * should be equal to the value. The timer is advanced by this much on 
-   * success.
+   * should be equal to the value. The timer is advanced by this much.
    * @param[in] deltaCycleMax: end of the interval where the signal should be
    * equal, it is an error if the signal is not equal by this cycle.
    * @param[in] desc a string description to be printed out with errors.
@@ -45,6 +44,7 @@ class TemporalTesterTimer[+T <: Module](val tester: TemporalTester[T]) {
     val targetCycleMax = cycle + deltaCycleMax
     var currentCycle = tester.cycle
     val msgHeader = s"expectEqualsAtAndAdvance: $desc"
+    cycle += deltaCycleAdvance
     
     assert(deltaCycleMin <= deltaCycleAdvance
            && deltaCycleAdvance <= deltaCycleMax)
@@ -63,7 +63,6 @@ class TemporalTesterTimer[+T <: Module](val tester: TemporalTester[T]) {
     
     while (currentCycle <= targetCycleMax) {
       if (tester.peek(data) == x) {
-        cycle += deltaCycleAdvance
         return
       } else {
         expectMapEquals(betweenConstants, msgHeader)
@@ -73,7 +72,7 @@ class TemporalTesterTimer[+T <: Module](val tester: TemporalTester[T]) {
     }
     
     tester.expect(false, s"$msgHeader: ${data.name} did not equal $x during interval")
-    assert(false, s"$msgHeader: ${data.name} did not equal $x during interval")
+    //assert(false, s"$msgHeader: ${data.name} did not equal $x during interval")
   }
   
   /**

@@ -35,6 +35,8 @@ uint8_t SPI_transfer(uint8_t write_byte, uint8_t cpol, uint8_t cpha)
   while (bit < 8) {
     // new data on lines here
     if (bit == 0) {
+      clk = get_time();
+      periodic_delay(&clk, PERIOD/2);
       gpo_write(next_out_byte);
     } else {
       // though gpo_write could be factored out after the loop, it's kept
@@ -50,9 +52,6 @@ uint8_t SPI_transfer(uint8_t write_byte, uint8_t cpol, uint8_t cpha)
       next_out_byte = make_gpo(cpol, data_bit(write_byte, 7-bit));
     }
 
-    if (bit == 0) {
-      clk = get_time();
-    }
     periodic_delay(&clk, PERIOD/2);
     gpo_write(next_out_byte);  // data sampled here
 
@@ -74,11 +73,30 @@ uint8_t SPI_transfer(uint8_t write_byte, uint8_t cpol, uint8_t cpha)
   return result;
 }
 
+#define COMMAND_IN_DATA *((volatile uint32_t*)(0xffff8800))
+#define COMMAND_IN_VALID *((volatile uint32_t*)(0xffff8801))
+
+#define RESPONSE_OUT_DATA *((volatile uint32_t*)(0xffff8810))
+#define RESPONSE_OUT_READY *((volatile uint32_t*)(0xffff8811))
+
+#define OP_TRANSFER 0x00
+
 int main(void)
 {
-    uint8_t result = SPI_transfer(0x4a, 0, 0);
-    debug_string(itoa_hex(result));
-    debug_string("\n");
+    uint8_t cpha = 0, cpol = 0;
+    while (1) {
+      while (!COMMAND_IN_VALID);
+
+      uint32_t received_command = COMMAND_IN_DATA;
+      uint8_t opcode = received_command >> 24;
+      uint32_t data = received_command & 0x00ffffff;  // truncate to 24 bits
+
+      if (opcode == OP_TRANSFER) {
+        uint8_t result = SPI_transfer(data, 0, 0);
+        while (!RESPONSE_OUT_READY);
+        RESPONSE_OUT_DATA = result;
+      }
+    }
     return 1;
 }
 

@@ -105,15 +105,50 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
     }
   }
   
-  reset(5)  // TODO: justify the number
-    
+  /*
+   * Sends a command to the core's peripheral bus. Returns once the command
+   * queue is empty (i.e. the command has been read).
+   */
+  def sendCommand(command: BigInt, desc: String = "") {
+    val msgHeader = s"sendCommand ($command): $desc"
+    stepUntilEqual(c.io.commandIn.ready, 1)
+    poke(c.io.commandIn.bits, command)
+    poke(c.io.commandIn.valid, 1)
+    step(1)
+    poke(c.io.commandIn.valid, 0)
+    stepUntilEqual(c.commandInQueue.valid, 0)
+  }
+  
+  /*
+   * Reads the next response from the core's peripheral bus. Returns the
+   * response bits, and returns once cycle after (once the data has been
+   * cleared from the queue).
+   */
+  def getResponse(desc: String = ""): BigInt = {
+    stepUntilEqual(c.io.respOut.valid, 1)
+    val rtn = peek(c.io.respOut.bits)
+    poke(c.io.respOut.ready, 1)
+    step(1)
+    poke(c.io.respOut.ready, 0)
+    rtn
+  }
+  
+  poke(c.io.commandIn.valid, 0)
+  poke(c.io.respOut.ready, 0)
+  
   println("Loading memory ... ")
   RiscvHelper.loadMem(this, c.core.imem.ispm, "../tests/examples/build/emulator/spi.inst.mem")
   RiscvHelper.loadMem(this, c.core.dmem.dspm, "../tests/examples/build/emulator/spi.data.mem")
   println("done")
   
+  reset(5)  // TODO: justify the number
+  
+  sendCommand(0x0000004a)
+  
   expectSpiHost(1000, 0, 8,
                 c.io.gpio_out_broken(2), c.io.gpio_out_broken(0), c.io.gpio_in_broken(0),
                 0, 0,
-                Array(0, 1, 0, 0, 1, 0, 1, 0), Array(0, 0, 0, 0, 0, 0, 0, 0))
+                Array(0, 1, 0, 0, 1, 0, 1, 0), Array(0, 1, 0, 1, 0, 0, 1, 0))
+                
+  expect(getResponse() == 0x52, "SPI response 0x4a => 0x52")
 } 

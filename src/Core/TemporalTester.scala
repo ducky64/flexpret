@@ -1,27 +1,32 @@
 package FlexpretTests
 
 import Chisel._
-import scala.collection.mutable.{PriorityQueue, HashMap, MutableList}
+import scala.collection.mutable.{Queue, PriorityQueue, HashMap, MutableList}
 import scala.collection.immutable.{Iterable}
 import scala.util.continuations._
+
+import java.util.concurrent.{LinkedBlockingQueue, BlockingQueue}
 
 class TemporalTesterThread[T <: Module](val c: T, val tester: TemporalTester[T]) {
   /**
    * Wrapper around run that automatically unblocks threads at the end and
    * does sanity checking.
    */
-  def run_wrapper(): Unit @suspendable = {
+  def run_wrapper() {
+    tester.resume(waitingQueue)
+    
     run()
     if (!unblockedWaiters) {
       unblockWaiters()
     }
+    
+    tester.resume(waitingQueue)
   }
   
   /**
    * Actual testing code here. Overload this method.
    */
-  def run(): Unit @suspendable = {
-    step(1)
+  def run() {
   }
   
   //
@@ -57,7 +62,6 @@ class TemporalTesterThread[T <: Module](val c: T, val tester: TemporalTester[T])
    * with this thread.
    */
   def newThread(newThread: TemporalTesterThread[T]) {
-    assert(newThread.tester == tester)
     tester.scheduleNewThread(newThread)
   }
   
@@ -65,8 +69,9 @@ class TemporalTesterThread[T <: Module](val c: T, val tester: TemporalTester[T])
    * Waits until the specified TemporalTesterThread has reached some point.
    * For now, this waits until the thread either returns or signals it is done.  
    */
-  def waitOnThread(waitingOn: TemporalTesterThread[T]): Unit @suspendable = {
-    shift(tester.scheduleBlocking(waitingOn))
+  def waitOnThread(waitingOn: TemporalTesterThread[T]) {
+    tester.waitOnThread(this, waitingOn)
+    tester.resume(waitingQueue)
   }
   
   var unblockedWaiters = false
@@ -101,10 +106,19 @@ class TemporalTesterThread[T <: Module](val c: T, val tester: TemporalTester[T])
     tester.expect(node, value)
   }
   
-  def step(numCycles: BigInt): Unit @suspendable = {
+  def step(numCycles: BigInt) {
     // This involves the scheduler to wake up this thread in the specified
     // number of cycles, then returns control to the scheduler.
-    shift(tester.scheduleContinuation(numCycles))
+    tester.stepThread(this, numCycles)
+    tester.resume(waitingQueue)
+  }
+  
+  val waitingQueue = new LinkedBlockingQueue[Int]()
+  def resume(myQueue: BlockingQueue[Int]) {
+    assert(waitingQueue.isEmpty())
+    assert(myQueue.isEmpty())
+    waitingQueue.offer(0)
+    myQueue.take()
   }
 }
 
@@ -128,9 +142,9 @@ class TemporalTester[T <: Module](c: T, val frequency:Int,
   // next cycle where there is activity in at least one thread
   val nextActiveCycle = new PriorityQueue[BigInt]()
   // map of active cycles to list of continuations to run on that cycle
-  val cycleContinuationMap = new HashMap[BigInt, MutableList[Unit=>Unit]]()
+  val cycleThreadMap = new HashMap[BigInt, Queue[TemporalTesterThread[T]]]()
   // map of TemporalTesterThreads to list of continuations blocked by it 
-  val threadBlockingMap = new HashMap[TemporalTesterThread[T], MutableList[Unit=>Unit]]()
+  val threadBlockingMap = new HashMap[TemporalTesterThread[T], Queue[TemporalTesterThread[T]]]()
   // map of TemporalTesterThreads to whether it has "finished" or not
   val threadStatusMap = new HashMap[TemporalTesterThread[T], Boolean]()
   
@@ -143,42 +157,38 @@ class TemporalTester[T <: Module](c: T, val frequency:Int,
     super.step(n)
   }
   
-  def scheduleContinuation(numCycles: BigInt): ((Unit => Unit) => Unit) = {
+  def stepThread(thread: TemporalTesterThread[T], numCycles: BigInt) {
     val targetCycle = cycle + numCycles
-    def scheduleThreadInternal(continuation: Unit => Unit) {
-      if (!cycleContinuationMap.contains(targetCycle)) {
-        cycleContinuationMap += (targetCycle -> new MutableList[Unit => Unit]())
-      }
-      cycleContinuationMap(targetCycle) += continuation 
+    if (!cycleThreadMap.contains(targetCycle)) {
+      nextActiveCycle += targetCycle
+      cycleThreadMap += (targetCycle -> new Queue[TemporalTesterThread[T]]())
     }
-    scheduleThreadInternal
+    cycleThreadMap(targetCycle) += thread
   }
   
-  def scheduleBlocking(waitingOn: TemporalTesterThread[T]): ((Unit => Unit) => Unit) = {
-    def scheduleBlockingInternal(continuation: Unit => Unit) {
-      assert(threadBlockingMap.contains(waitingOn))
-      assert(threadStatusMap.contains(waitingOn))
-      if (threadStatusMap(waitingOn)) {
-        assert(false, "attempted to wait on finished thread")
-      }
-      threadBlockingMap(waitingOn) += continuation
+  def waitOnThread(thread: TemporalTesterThread[T], waitingOn: TemporalTesterThread[T]) {
+    assert(threadBlockingMap.contains(waitingOn))
+    assert(threadStatusMap.contains(waitingOn))
+    if (threadStatusMap(waitingOn)) {
+      assert(false, "attempted to wait on finished thread")
     }
-    scheduleBlockingInternal
+    threadBlockingMap(waitingOn) += thread
   }
-  
-  def startThread(newThread: TemporalTesterThread[T]) = {
-    scheduleNewThread(newThread)
-    reset {
-      newThread.run_wrapper()
-      0
-    }
-  }
-  
+    
   def scheduleNewThread(newThread: TemporalTesterThread[T]) {
     assert(!threadBlockingMap.contains(newThread))
     assert(!threadStatusMap.contains(newThread))
-    threadBlockingMap += (newThread -> new MutableList[Unit => Unit]())
+    threadBlockingMap += (newThread -> new Queue[TemporalTesterThread[T]]())
     threadStatusMap += (newThread -> false)
+    
+    (new Thread(new Runnable {
+      def run() {
+        newThread.run_wrapper()
+      }
+    })).start
+    waitingQueue.take()
+    
+    stepThread(newThread, 0)
   }
   
   def threadUnblocking(unblockingThread: TemporalTesterThread[T]) {
@@ -187,7 +197,32 @@ class TemporalTester[T <: Module](c: T, val frequency:Int,
     assert(threadStatusMap(unblockingThread) == false)
     threadStatusMap(unblockingThread) = true
     for (thread <- threadBlockingMap(unblockingThread)) {
-      scheduleContinuation(0)(thread)
+      stepThread(thread, 0)
     }
+  }
+  
+  def schedulerLoop() {
+    while (!nextActiveCycle.isEmpty) {
+      val targetCycle: BigInt = nextActiveCycle.dequeue()
+      assert(targetCycle >= cycle)
+      step((targetCycle - cycle).toInt)
+      
+      println(s"Scheduler: $targetCycle")
+      
+      val cycleQueue = cycleThreadMap(targetCycle)
+      while (!cycleQueue.isEmpty) {
+        val thread = cycleThreadMap(targetCycle).dequeue()
+        thread.resume(waitingQueue)
+      }
+      cycleThreadMap -= targetCycle
+    } 
+  }
+  
+  val waitingQueue = new LinkedBlockingQueue[Int]()
+  def resume(myQueue: BlockingQueue[Int]) {
+    assert(waitingQueue.isEmpty())
+    assert(myQueue.isEmpty())
+    waitingQueue.offer(0)
+    myQueue.take()
   }
 }

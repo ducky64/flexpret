@@ -17,8 +17,8 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
     }
   }
   
-  // scheduleNewThread(new WaitUntilEquals(c, this, Map(c.io.commandIn.valid -> 2)))
-  // scheduleNewThread(new WaitUntilEquals(c, this, Map(c.io.commandIn.valid -> 2)))
+  scheduleNewThread(new WaitUntilEquals(c, this, Map(c.io.commandIn.valid -> 2)))
+  scheduleNewThread(new WaitUntilEquals(c, this, Map(c.io.commandIn.valid -> 2)))
   
   /**
    * Expect a SPI wavefrom from a SPI master.
@@ -165,16 +165,5 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
                 Array(0, 0, 1, 0, 1, 0, 1, 0), Array(1, 0, 1, 0, 1, 0, 1, 0))
   expect(getResponse() == 0xaa, "SPI response 0x4a => 0xAA")*/
   
-  override def run() {
-    val lol = reset {
-      def f(cb: Unit=>Unit) {
-        
-      }
-      shift { f }
-      println("test")
-      0
-    }
-    
-    1+1
-  }
+  schedulerLoop()
 } 

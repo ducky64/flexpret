@@ -1,16 +1,27 @@
 package FlexpretTests
 
 import Chisel._
-import scala.collection.mutable._
+import scala.collection.mutable.{PriorityQueue, HashMap, MutableList}
+import scala.collection.immutable.{Iterable}
 import scala.util.continuations._
 
-class TemporalTesterThread[T <: Module](val c: T, 
-                                         val tester: TemporalTester[T]) {
+class TemporalTesterThread[T <: Module](val c: T, val tester: TemporalTester[T]) {
   /**
-   * Runs this thread. Overload this method with the actual testing code.
+   * Wrapper around run that automatically unblocks threads at the end and
+   * does sanity checking.
    */
-  def run() {
-    
+  def run_wrapper(): Unit @suspendable = {
+    run()
+    if (!unblockedWaiters) {
+      unblockWaiters()
+    }
+  }
+  
+  /**
+   * Actual testing code here. Overload this method.
+   */
+  def run(): Unit @suspendable = {
+    step(1)
   }
   
   //
@@ -20,7 +31,7 @@ class TemporalTesterThread[T <: Module](val c: T,
    * Returns true of all nodes in the map are equal to their values.
    * @param[in] desc a string description to be printed out with errors.
    */
-  def isMapEquals(nodeValueMap: Map[Bits, BigInt]): Boolean = {
+  def isMapEquals(nodeValueMap: Iterable[(Bits, BigInt)]): Boolean = {
     for ((node, value) <- nodeValueMap) {
       if (peek(node) != value) {
         return false
@@ -33,7 +44,7 @@ class TemporalTesterThread[T <: Module](val c: T,
    * Expect that all nodes in the map are equal to their values.
    * @param[in] desc a string description to be printed out with errors.
    */
-  def expectMapEquals(nodeValueMap: Map[Bits, BigInt], desc: String = "") {
+  def expectMapEquals(nodeValueMap: Iterable[(Bits, BigInt)], desc: String = "") {
     tester.expect(isMapEquals(nodeValueMap),
                   s"expectMapEquals: $desc: not equal")
   }
@@ -47,15 +58,14 @@ class TemporalTesterThread[T <: Module](val c: T,
    */
   def newThread(newThread: TemporalTesterThread[T]) {
     assert(newThread.tester == tester)
-    tester.runNewThread(newThread)
-    assert(false)
+    tester.scheduleNewThread(newThread)
   }
   
   /**
    * Waits until the specified TemporalTesterThread has reached some point.
    * For now, this waits until the thread either returns or signals it is done.  
    */
-  def waitOnThread(waitingOn: TemporalTesterThread[T]) {
+  def waitOnThread(waitingOn: TemporalTesterThread[T]): Unit @suspendable = {
     shift(tester.scheduleBlocking(waitingOn))
   }
   
@@ -91,10 +101,21 @@ class TemporalTesterThread[T <: Module](val c: T,
     tester.expect(node, value)
   }
   
-  def step(numCycles: BigInt) {
+  def step(numCycles: BigInt): Unit @suspendable = {
     // This involves the scheduler to wake up this thread in the specified
     // number of cycles, then returns control to the scheduler.
     shift(tester.scheduleContinuation(numCycles))
+  }
+}
+
+class WaitUntilEquals[T <: Module](c: T, tester: TemporalTester[T], 
+    nodeValueMap: Iterable[(Bits, BigInt)]) 
+  extends TemporalTesterThread[T](c, tester) {
+  override def run(): Unit @suspendable = {
+    while (!isMapEquals(nodeValueMap)) {
+      println(s"Step ${tester.cycle}")
+      step(1)
+    }
   }
 }
 
@@ -145,13 +166,19 @@ class TemporalTester[T <: Module](c: T, val frequency:Int,
     scheduleBlockingInternal
   }
   
-  def runNewThread(newThread: TemporalTesterThread[T]) {
-    threadBlockingMap += (newThread -> new MutableList[Unit => Unit]())
-    threadStatusMap += (newThread -> false)
+  def startThread(newThread: TemporalTesterThread[T]) = {
+    scheduleNewThread(newThread)
     reset {
-      newThread.run()
+      newThread.run_wrapper()
       0
     }
+  }
+  
+  def scheduleNewThread(newThread: TemporalTesterThread[T]) {
+    assert(!threadBlockingMap.contains(newThread))
+    assert(!threadStatusMap.contains(newThread))
+    threadBlockingMap += (newThread -> new MutableList[Unit => Unit]())
+    threadStatusMap += (newThread -> false)
   }
   
   def threadUnblocking(unblockingThread: TemporalTesterThread[T]) {

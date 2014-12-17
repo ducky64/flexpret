@@ -10,7 +10,9 @@ class IsaTest(c: CommandResponseQueueCore, memPrefix: String) extends TemporalTe
   RiscvHelper.loadMem(this, c.core.imem.ispm, memPrefix + ".inst.mem")
   RiscvHelper.loadMem(this, c.core.dmem.dspm, memPrefix + ".data.mem")
   
-  //stepUntilNotEqual(c.core.io.host.to_host, 0)
+  while (peek(c.core.io.host.to_host) == 0) {
+    step(1)
+  }
   
   val dataToHost = peek(c.core.io.host.to_host)
   assert(dataToHost.isValidInt)

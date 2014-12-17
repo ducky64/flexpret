@@ -2,7 +2,8 @@ package FlexpretTests
 import Chisel._
 
 import Core._
-import FlexpretTests._
+
+import scala.util.continuations._
 
 class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 100000) {
   def bitInv(x: Int): Int = {
@@ -15,6 +16,9 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
       0
     }
   }
+  
+  // scheduleNewThread(new WaitUntilEquals(c, this, Map(c.io.commandIn.valid -> 2)))
+  // scheduleNewThread(new WaitUntilEquals(c, this, Map(c.io.commandIn.valid -> 2)))
   
   /**
    * Expect a SPI wavefrom from a SPI master.
@@ -143,7 +147,7 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
   
   reset(5)  // TODO: justify the number
   
-  sendCommand(0x01000000 | 10000);  // set clock
+  /*sendCommand(0x01000000 | 10000);  // set clock
   sendCommand(0x02000000 | 0x0);    // set CPOL=0, CPHA=0
   sendCommand(0x00000000 | 0x4a);   // transfer data byte
   expectSpiHost(1000, 0, 8,
@@ -159,5 +163,18 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
                 c.io.gpio_out_broken(2), c.io.gpio_out_broken(0), c.io.gpio_in_broken(0),
                 1, 1,
                 Array(0, 0, 1, 0, 1, 0, 1, 0), Array(1, 0, 1, 0, 1, 0, 1, 0))
-  expect(getResponse() == 0xaa, "SPI response 0x4a => 0xAA")
+  expect(getResponse() == 0xaa, "SPI response 0x4a => 0xAA")*/
+  
+  override def run() {
+    val lol = reset {
+      def f(cb: Unit=>Unit) {
+        
+      }
+      shift { f }
+      println("test")
+      0
+    }
+    
+    1+1
+  }
 } 

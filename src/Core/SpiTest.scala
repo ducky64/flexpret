@@ -63,7 +63,7 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
       poke(misoLine, dataToHost(0))
     }
     
-    val timer = createTimerAtNow()
+    /*val timer = createTimerAtNow()
     var bit: Int = 0
     while (bit < numBits) {
       if (isFirst) {
@@ -102,7 +102,7 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
                                    desc="SPI clock transition",
                                    betweenConstants=Map(clkLine -> currentClock))
       println(s"Cycle $cycle, clk ${peek(clkLine)}, MOSI ${peek(mosiLine)}")
-    }
+    }*/
   }
   
   /*
@@ -111,12 +111,12 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
    */
   def sendCommand(command: BigInt, desc: String = "") {
     val msgHeader = s"sendCommand ($command): $desc"
-    stepUntilEqual(c.io.commandIn.ready, 1)
+    //stepUntilEqual(c.io.commandIn.ready, 1)
     poke(c.io.commandIn.bits, command)
     poke(c.io.commandIn.valid, 1)
     step(1)
     poke(c.io.commandIn.valid, 0)
-    stepUntilEqual(c.commandInQueue.valid, 0)
+    //stepUntilEqual(c.commandInQueue.valid, 0)
   }
   
   /*
@@ -125,7 +125,7 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
    * cleared from the queue).
    */
   def getResponse(desc: String = ""): BigInt = {
-    stepUntilEqual(c.io.respOut.valid, 1)
+    //stepUntilEqual(c.io.respOut.valid, 1)
     val rtn = peek(c.io.respOut.bits)
     poke(c.io.respOut.ready, 1)
     step(1)

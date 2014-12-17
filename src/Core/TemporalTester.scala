@@ -1,153 +1,102 @@
 package FlexpretTests
 
 import Chisel._
-import scala.collection.mutable.{Queue, PriorityQueue, HashMap, MutableList}
-import scala.collection.immutable.{Iterable}
-import scala.util.continuations._
 
-import java.util.concurrent.{LinkedBlockingQueue, BlockingQueue}
-
-class TemporalTesterThread[T <: Module](val c: T, val tester: TemporalTester[T]) {
-  /**
-   * Wrapper around run that automatically unblocks threads at the end and
-   * does sanity checking.
-   */
-  def run_wrapper() {
-    tester.resume(waitingQueue)
-    
-    run()
-    if (!unblockedWaiters) {
-      unblockWaiters()
-    }
-    
-    tester.resume(waitingQueue)
-  }
+class TemporalTesterTimer[+T <: Module](val tester: TemporalTester[T]) {
+  var cycle: BigInt = 0
   
-  /**
-   * Actual testing code here. Overload this method.
-   */
-  def run() {
-  }
-  
-  //
-  // Helper functionality
-  //
-  /**
-   * Returns true of all nodes in the map are equal to their values.
-   * @param[in] desc a string description to be printed out with errors.
-   */
-  def isMapEquals(nodeValueMap: Iterable[(Bits, BigInt)]): Boolean = {
-    for ((node, value) <- nodeValueMap) {
-      if (peek(node) != value) {
-        return false
-      }
-    }
-    return true
+  def setCycle(newCycle: BigInt) {
+    cycle = newCycle
   }
   
   /**
    * Expect that all nodes in the map are equal to their values.
    * @param[in] desc a string description to be printed out with errors.
    */
-  def expectMapEquals(nodeValueMap: Iterable[(Bits, BigInt)], desc: String = "") {
-    tester.expect(isMapEquals(nodeValueMap),
-                  s"expectMapEquals: $desc: not equal")
-  }
-  
-  //
-  // Thread control functionality
-  //
-  /**
-   * Creates and schedules a new TemporalTesterThread, which runs in "parallel"
-   * with this thread.
-   */
-  def newThread(newThread: TemporalTesterThread[T]) {
-    tester.scheduleNewThread(newThread)
-  }
-  
-  /**
-   * Waits until the specified TemporalTesterThread has reached some point.
-   * For now, this waits until the thread either returns or signals it is done.  
-   */
-  def waitOnThread(waitingOn: TemporalTesterThread[T]) {
-    tester.waitOnThread(this, waitingOn)
-    tester.resume(waitingQueue)
-  }
-  
-  var unblockedWaiters = false
-  /**
-   * Unblocks any threads waiting on this thread. Must only be called once in
-   * the thread's lifetime!
-   */
-  def unblockWaiters() {
-    assert(!unblockedWaiters)
-    unblockedWaiters = true
-    tester.threadUnblocking(this)
-  }
-  
-  //
-  // Various passthroughs for Tester functionality
-  //
-  def peek(node: Bits): BigInt = {
-    tester.peek(node)
-  }
-  
-  def poke(node: Bits, value: BigInt) {
-    tester.poke(node, value)
-  }
-  
-  def expect(condition: Boolean) {
-    // TODO: specifiable desc
-    tester.expect(condition, "")
-  }
-  
-  def expect(node: Bits, value: BigInt) {
-    // TODO: pass descriptions to tester
-    tester.expect(node, value)
-  }
-  
-  def step(numCycles: BigInt) {
-    // This involves the scheduler to wake up this thread in the specified
-    // number of cycles, then returns control to the scheduler.
-    tester.stepThread(this, numCycles)
-    tester.resume(waitingQueue)
-  }
-  
-  val waitingQueue = new LinkedBlockingQueue[Int]()
-  def resume(myQueue: BlockingQueue[Int]) {
-    assert(waitingQueue.isEmpty())
-    assert(myQueue.isEmpty())
-    waitingQueue.offer(0)
-    myQueue.take()
-  }
-}
-
-class WaitUntilEquals[T <: Module](c: T, tester: TemporalTester[T], 
-    nodeValueMap: Iterable[(Bits, BigInt)]) 
-  extends TemporalTesterThread[T](c, tester) {
-  override def run(): Unit @suspendable = {
-    while (!isMapEquals(nodeValueMap)) {
-      println(s"Step ${tester.cycle}")
-      step(1)
+  def expectMapEquals(nodeValueMap: Map[Bits, BigInt], desc: String = "") {
+    for ((node, value) <- nodeValueMap) {
+      tester.expect(tester.peek(node) == value,
+                    s"expectMapEquals: $desc: ${node.name} not equal to $value")
     }
   }
+  
+  /**
+   * Expect that a signal will be equal to something in the specified interval,
+   * offset from the Timer's current cycle (which MAY be different from the
+   * Tester's cycle!). When this function returns, it will be on the cycle
+   * where the signal first changed (or fail, if the expected transition did not
+   * happen.
+   * @param[in] deltaCycleMin: start of the interval where the signal should be
+   * equal, it is an error for the signal to be equal before this.
+   * @param[in] deltaCycleAdvance: "center" of the interval where the signal
+   * should be equal to the value. The timer is advanced by this much.
+   * @param[in] deltaCycleMax: end of the interval where the signal should be
+   * equal, it is an error if the signal is not equal by this cycle.
+   * @param[in] desc a string description to be printed out with errors.
+   * @param[in] betweenConstants: a map of nodes to their expect values before
+   * the signal is equal.
+   */
+  def expectEqualsAtAndAdvance(data: Bits, x: BigInt, deltaCycleMin: BigInt,
+                               deltaCycleAdvance: BigInt, deltaCycleMax: BigInt,
+                               desc: String = "",
+                               betweenConstants: Map[Bits, BigInt] = Map()) {
+    val targetCycleMin = cycle + deltaCycleMin
+    val targetCycleMax = cycle + deltaCycleMax
+    var currentCycle = tester.cycle
+    val msgHeader = s"expectEqualsAtAndAdvance: $desc"
+    cycle += deltaCycleAdvance
+    
+    assert(deltaCycleMin <= deltaCycleAdvance
+           && deltaCycleAdvance <= deltaCycleMax)
+    assert(targetCycleMin >= currentCycle,
+           s"Interval start $targetCycleMin < current $currentCycle")
+    assert(targetCycleMax >= currentCycle,
+           s"Interval end $targetCycleMax < current $currentCycle")
+    
+    while (currentCycle < targetCycleMin) {
+      tester.expect(tester.peek(data) != x, 
+                    s"$msgHeader: ${data.name} equals $x before interval start")
+      expectMapEquals(betweenConstants, msgHeader)
+      tester.step(1)
+      currentCycle += 1
+    }
+    
+    while (currentCycle <= targetCycleMax) {
+      if (tester.peek(data) == x) {
+        return
+      } else {
+        expectMapEquals(betweenConstants, msgHeader)
+      }
+      tester.step(1)
+      currentCycle += 1
+    }
+    
+    tester.expect(false, s"$msgHeader: ${data.name} did not equal $x during interval")
+    //assert(false, s"$msgHeader: ${data.name} did not equal $x during interval")
+  }
+  
+  /**
+   * A wrapper around expectEqualsAtAndAdvance, calculating the interval in 
+   * terms of a center time +/- allowable jitter.
+   */
+  def expectEqualsAtCentered(data: Bits, x: BigInt,
+                             deltaCycleCenter: BigInt, allowableJitter: BigInt,
+                             desc: String = "",
+                             betweenConstants: Map[Bits, BigInt] = Map()) {
+    assert(allowableJitter <= deltaCycleCenter)
+    
+    expectEqualsAtAndAdvance(data, x, deltaCycleCenter - allowableJitter,
+                             deltaCycleCenter,
+                             deltaCycleCenter + allowableJitter, 
+                             desc, betweenConstants)
+  }
 }
 
-// TODO: figure out covariance / contravariance (why +T?)
-class TemporalTester[T <: Module](c: T, val frequency:Int,
+class TemporalTester[+T <: Module](c: T, val frequency:Int,
                                    val max_cycle: BigInt = 0,
                                    isTrace: Boolean = false)
                                    extends Tester(c, isTrace) {
   var cycle: BigInt = 0
-  // next cycle where there is activity in at least one thread
-  val nextActiveCycle = new PriorityQueue[BigInt]()
-  // map of active cycles to list of continuations to run on that cycle
-  val cycleThreadMap = new HashMap[BigInt, Queue[TemporalTesterThread[T]]]()
-  // map of TemporalTesterThreads to list of continuations blocked by it 
-  val threadBlockingMap = new HashMap[TemporalTesterThread[T], Queue[TemporalTesterThread[T]]]()
-  // map of TemporalTesterThreads to whether it has "finished" or not
-  val threadStatusMap = new HashMap[TemporalTesterThread[T], Boolean]()
-  
   override def step(n: Int) {
     cycle = cycle + n
     if (cycle > max_cycle) {
@@ -157,72 +106,21 @@ class TemporalTester[T <: Module](c: T, val frequency:Int,
     super.step(n)
   }
   
-  def stepThread(thread: TemporalTesterThread[T], numCycles: BigInt) {
-    val targetCycle = cycle + numCycles
-    if (!cycleThreadMap.contains(targetCycle)) {
-      nextActiveCycle += targetCycle
-      cycleThreadMap += (targetCycle -> new Queue[TemporalTesterThread[T]]())
-    }
-    cycleThreadMap(targetCycle) += thread
-  }
-  
-  def waitOnThread(thread: TemporalTesterThread[T], waitingOn: TemporalTesterThread[T]) {
-    assert(threadBlockingMap.contains(waitingOn))
-    assert(threadStatusMap.contains(waitingOn))
-    if (threadStatusMap(waitingOn)) {
-      assert(false, "attempted to wait on finished thread")
-    }
-    threadBlockingMap(waitingOn) += thread
-  }
-    
-  def scheduleNewThread(newThread: TemporalTesterThread[T]) {
-    assert(!threadBlockingMap.contains(newThread))
-    assert(!threadStatusMap.contains(newThread))
-    threadBlockingMap += (newThread -> new Queue[TemporalTesterThread[T]]())
-    threadStatusMap += (newThread -> false)
-    
-    (new Thread(new Runnable {
-      def run() {
-        newThread.run_wrapper()
-      }
-    })).start
-    waitingQueue.take()
-    
-    stepThread(newThread, 0)
-  }
-  
-  def threadUnblocking(unblockingThread: TemporalTesterThread[T]) {
-    assert(threadBlockingMap.contains(unblockingThread))
-    assert(threadStatusMap.contains(unblockingThread))
-    assert(threadStatusMap(unblockingThread) == false)
-    threadStatusMap(unblockingThread) = true
-    for (thread <- threadBlockingMap(unblockingThread)) {
-      stepThread(thread, 0)
+  def stepUntilEqual(data: Bits, value: BigInt) {
+    while (peek(data) != value) {
+      step(1)
     }
   }
   
-  def schedulerLoop() {
-    while (!nextActiveCycle.isEmpty) {
-      val targetCycle: BigInt = nextActiveCycle.dequeue()
-      assert(targetCycle >= cycle)
-      step((targetCycle - cycle).toInt)
-      
-      println(s"Scheduler: $targetCycle")
-      
-      val cycleQueue = cycleThreadMap(targetCycle)
-      while (!cycleQueue.isEmpty) {
-        val thread = cycleThreadMap(targetCycle).dequeue()
-        thread.resume(waitingQueue)
-      }
-      cycleThreadMap -= targetCycle
-    } 
+  def stepUntilNotEqual(data: Bits, value: BigInt) {
+    while (peek(data) == value) {
+      step(1)
+    }
   }
   
-  val waitingQueue = new LinkedBlockingQueue[Int]()
-  def resume(myQueue: BlockingQueue[Int]) {
-    assert(waitingQueue.isEmpty())
-    assert(myQueue.isEmpty())
-    waitingQueue.offer(0)
-    myQueue.take()
+  def createTimerAtNow(): TemporalTesterTimer[T] = {
+    val timer = new TemporalTesterTimer(this)
+    timer.setCycle(cycle)
+    timer
   }
 }

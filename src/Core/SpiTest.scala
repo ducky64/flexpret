@@ -2,8 +2,7 @@ package FlexpretTests
 import Chisel._
 
 import Core._
-
-import scala.util.continuations._
+import FlexpretTests._
 
 class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 100000) {
   def bitInv(x: Int): Int = {
@@ -16,9 +15,6 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
       0
     }
   }
-  
-  scheduleNewThread(new WaitUntilEquals(c, this, Map(c.io.commandIn.valid -> 2)))
-  scheduleNewThread(new WaitUntilEquals(c, this, Map(c.io.commandIn.valid -> 2)))
   
   /**
    * Expect a SPI wavefrom from a SPI master.
@@ -67,7 +63,7 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
       poke(misoLine, dataToHost(0))
     }
     
-    /*val timer = createTimerAtNow()
+    val timer = createTimerAtNow()
     var bit: Int = 0
     while (bit < numBits) {
       if (isFirst) {
@@ -106,7 +102,7 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
                                    desc="SPI clock transition",
                                    betweenConstants=Map(clkLine -> currentClock))
       println(s"Cycle $cycle, clk ${peek(clkLine)}, MOSI ${peek(mosiLine)}")
-    }*/
+    }
   }
   
   /*
@@ -115,12 +111,12 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
    */
   def sendCommand(command: BigInt, desc: String = "") {
     val msgHeader = s"sendCommand ($command): $desc"
-    //stepUntilEqual(c.io.commandIn.ready, 1)
+    stepUntilEqual(c.io.commandIn.ready, 1)
     poke(c.io.commandIn.bits, command)
     poke(c.io.commandIn.valid, 1)
     step(1)
     poke(c.io.commandIn.valid, 0)
-    //stepUntilEqual(c.commandInQueue.valid, 0)
+    stepUntilEqual(c.commandInQueue.valid, 0)
   }
   
   /*
@@ -129,7 +125,7 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
    * cleared from the queue).
    */
   def getResponse(desc: String = ""): BigInt = {
-    //stepUntilEqual(c.io.respOut.valid, 1)
+    stepUntilEqual(c.io.respOut.valid, 1)
     val rtn = peek(c.io.respOut.bits)
     poke(c.io.respOut.ready, 1)
     step(1)
@@ -147,7 +143,7 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
   
   reset(5)  // TODO: justify the number
   
-  /*sendCommand(0x01000000 | 10000);  // set clock
+  sendCommand(0x01000000 | 10000);  // set clock
   sendCommand(0x02000000 | 0x0);    // set CPOL=0, CPHA=0
   sendCommand(0x00000000 | 0x4a);   // transfer data byte
   expectSpiHost(1000, 0, 8,
@@ -163,7 +159,5 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
                 c.io.gpio_out_broken(2), c.io.gpio_out_broken(0), c.io.gpio_in_broken(0),
                 1, 1,
                 Array(0, 0, 1, 0, 1, 0, 1, 0), Array(1, 0, 1, 0, 1, 0, 1, 0))
-  expect(getResponse() == 0xaa, "SPI response 0x4a => 0xAA")*/
-  
-  schedulerLoop()
+  expect(getResponse() == 0xaa, "SPI response 0x4a => 0xAA")
 } 

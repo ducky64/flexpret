@@ -5,7 +5,34 @@ import Core._
 
 import scala.util.continuations._
 
-class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 100000) {
+class SendCommand(c: CommandResponseQueueCore, tester: TemporalTester[T], 
+    event: TemporalTester[T], nodeValueMap: Iterable[(Bits, BigInt)],
+    cyclesBefore: BigInt, cyclesAfter: BigInt) 
+  extends TemporalTesterThread[T](c, tester) {
+  override def run() {
+    var lastCycleTrue = -1
+    
+    while (!event.unblockedWaiters) {
+      if (isMapEquals(nodeValueMap)) {
+        lastCycleTrue = getCycle()
+      }  else {
+        lastCycleTrue = -1
+      }
+      step(1)
+    }
+    
+    expect(lastCycleTrue <= event.unblockedCycle - cyclesBefore,
+           "expected true before")
+    
+    var targetCycle = getCycle() + cyclesAfter
+    while (getCycle() <= targetCycle) {
+      expect(isMapEquals(nodeValueMap), "expected true after")
+      step(1)
+    }
+  }
+}
+
+class SpiTesterMain(val c: CommandResponseQueueCore, val tester: TemporalTester[T]) {
   def bitInv(x: Int): Int = {
     if (x == 0) {
       1
@@ -17,9 +44,49 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
     }
   }
   
-  scheduleNewThread(new WaitUntilEquals(c, this, Map(c.io.commandIn.valid -> 2)))
-  scheduleNewThread(new WaitUntilEquals(c, this, Map(c.io.commandIn.valid -> 2)))
+  /*
+   * Sends a command to the core's peripheral bus. Returns once the command
+   * queue is empty (i.e. the command has been read).
+   */
+  def sendCommand(command: BigInt, desc: String = "") {
+    val msgHeader = s"sendCommand ($command): $desc"
+    //stepUntilEqual(c.io.commandIn.ready, 1)
+    poke(c.io.commandIn.bits, command)
+    poke(c.io.commandIn.valid, 1)
+    step(1)
+    poke(c.io.commandIn.valid, 0)
+    //stepUntilEqual(c.commandInQueue.valid, 0)
+  }
   
+  /*
+   * Reads the next response from the core's peripheral bus. Returns the
+   * response bits, and returns once cycle after (once the data has been
+   * cleared from the queue).
+   */
+  def getResponse(desc: String = ""): BigInt = {
+    //stepUntilEqual(c.io.respOut.valid, 1)
+    val rtn = peek(c.io.respOut.bits)
+    poke(c.io.respOut.ready, 1)
+    step(1)
+    poke(c.io.respOut.ready, 0)
+    rtn
+  }
+  
+  def run() {
+    poke(c.io.commandIn.valid, 0)
+    poke(c.io.respOut.ready, 0)
+  
+    println("Loading memory ... ")
+    RiscvHelper.loadMem(this, c.core.imem.ispm, "../tests/examples/build/emulator/spi.inst.mem")
+    RiscvHelper.loadMem(this, c.core.dmem.dspm, "../tests/examples/build/emulator/spi.data.mem")
+    println("done")
+  
+    reset(5)  // TODO: justify the number
+  }
+  
+}
+
+class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 100000) {  
   /**
    * Expect a SPI wavefrom from a SPI master.
    * @param[in] frequency: cycles between a clock period (two transitions).
@@ -109,44 +176,6 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
     }*/
   }
   
-  /*
-   * Sends a command to the core's peripheral bus. Returns once the command
-   * queue is empty (i.e. the command has been read).
-   */
-  def sendCommand(command: BigInt, desc: String = "") {
-    val msgHeader = s"sendCommand ($command): $desc"
-    //stepUntilEqual(c.io.commandIn.ready, 1)
-    poke(c.io.commandIn.bits, command)
-    poke(c.io.commandIn.valid, 1)
-    step(1)
-    poke(c.io.commandIn.valid, 0)
-    //stepUntilEqual(c.commandInQueue.valid, 0)
-  }
-  
-  /*
-   * Reads the next response from the core's peripheral bus. Returns the
-   * response bits, and returns once cycle after (once the data has been
-   * cleared from the queue).
-   */
-  def getResponse(desc: String = ""): BigInt = {
-    //stepUntilEqual(c.io.respOut.valid, 1)
-    val rtn = peek(c.io.respOut.bits)
-    poke(c.io.respOut.ready, 1)
-    step(1)
-    poke(c.io.respOut.ready, 0)
-    rtn
-  }
-  
-  poke(c.io.commandIn.valid, 0)
-  poke(c.io.respOut.ready, 0)
-  
-  println("Loading memory ... ")
-  RiscvHelper.loadMem(this, c.core.imem.ispm, "../tests/examples/build/emulator/spi.inst.mem")
-  RiscvHelper.loadMem(this, c.core.dmem.dspm, "../tests/examples/build/emulator/spi.data.mem")
-  println("done")
-  
-  reset(5)  // TODO: justify the number
-  
   /*sendCommand(0x01000000 | 10000);  // set clock
   sendCommand(0x02000000 | 0x0);    // set CPOL=0, CPHA=0
   sendCommand(0x00000000 | 0x4a);   // transfer data byte
@@ -165,5 +194,6 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
                 Array(0, 0, 1, 0, 1, 0, 1, 0), Array(1, 0, 1, 0, 1, 0, 1, 0))
   expect(getResponse() == 0xaa, "SPI response 0x4a => 0xAA")*/
   
+  scheduleNewThread(new SpiTesterMain(c, this))
   schedulerLoop()
 } 

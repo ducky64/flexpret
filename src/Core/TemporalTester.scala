@@ -75,6 +75,7 @@ class TemporalTesterThread[T <: Module](val c: T, val tester: TemporalTester[T])
   }
   
   var unblockedWaiters = false
+  var unblockedCycle: BigInt = -1
   /**
    * Unblocks any threads waiting on this thread. Must only be called once in
    * the thread's lifetime!
@@ -82,12 +83,17 @@ class TemporalTesterThread[T <: Module](val c: T, val tester: TemporalTester[T])
   def unblockWaiters() {
     assert(!unblockedWaiters)
     unblockedWaiters = true
+    unblockedCycle - getCycle()
     tester.threadUnblocking(this)
   }
   
   //
   // Various passthroughs for Tester functionality
   //
+  def getCycle(): BigInt = {
+    tester.cycle
+  }
+  
   def peek(node: Bits): BigInt = {
     tester.peek(node)
   }
@@ -125,9 +131,35 @@ class TemporalTesterThread[T <: Module](val c: T, val tester: TemporalTester[T])
 class WaitUntilEquals[T <: Module](c: T, tester: TemporalTester[T], 
     nodeValueMap: Iterable[(Bits, BigInt)]) 
   extends TemporalTesterThread[T](c, tester) {
-  override def run(): Unit @suspendable = {
+  override def run() {
     while (!isMapEquals(nodeValueMap)) {
-      println(s"Step ${tester.cycle}")
+      step(1)
+    }
+  }
+}
+
+class ExpectEqualAround[T <: Module](c: T, tester: TemporalTester[T], 
+    event: TemporalTester[T], nodeValueMap: Iterable[(Bits, BigInt)],
+    cyclesBefore: BigInt, cyclesAfter: BigInt) 
+  extends TemporalTesterThread[T](c, tester) {
+  override def run() {
+    var lastCycleTrue = -1
+    
+    while (!event.unblockedWaiters) {
+      if (isMapEquals(nodeValueMap)) {
+        lastCycleTrue = getCycle()
+      }  else {
+        lastCycleTrue = -1
+      }
+      step(1)
+    }
+    
+    expect(lastCycleTrue <= event.unblockedCycle - cyclesBefore,
+           "expected true before")
+    
+    var targetCycle = getCycle() + cyclesAfter
+    while (getCycle() <= targetCycle) {
+      expect(isMapEquals(nodeValueMap), "expected true after")
       step(1)
     }
   }

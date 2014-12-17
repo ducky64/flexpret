@@ -71,10 +71,16 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
         timer.setCycle(cycle)
         isFirst = false
       } else {
+        var expectedBit = bit
+        if (nextAction == 1) {
+          expectedBit = bit - 1
+        }
+        expectedBit = expectedFromHost(expectedBit)
         timer.expectEqualsAtCentered(clkLine, bitInv(currentClock),
                                      period/2, allowableJitter,
                                      desc="SPI clock transition",
-                                     betweenConstants=Map(clkLine -> currentClock))
+                                     betweenConstants=Map(clkLine -> currentClock,
+                                                          mosiLine -> expectedBit))
         stepUntilEqual(clkLine, bitInv(currentClock))
       }
       println(s"Cycle $cycle, clk ${peek(clkLine)}, MOSI ${peek(mosiLine)}")

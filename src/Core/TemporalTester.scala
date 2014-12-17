@@ -55,7 +55,10 @@ class TemporalTesterTimer[+T <: Module](val tester: TemporalTester[T]) {
     
     while (currentCycle < targetCycleMin) {
       tester.expect(tester.peek(data) != x, 
-                    s"$msgHeader: ${data.name} equals $x before interval start")
+                    s"$msgHeader: ${data.name} equals $x before interval start ($currentCycle < $targetCycleMin)")
+      if (tester.peek(data) == x) {
+        assert(false, s"$msgHeader: ${data.name} equals $x before interval start ($currentCycle < $targetCycleMin)")
+      }
       expectMapEquals(betweenConstants, msgHeader)
       tester.step(1)
       currentCycle += 1
@@ -71,8 +74,8 @@ class TemporalTesterTimer[+T <: Module](val tester: TemporalTester[T]) {
       currentCycle += 1
     }
     
-    tester.expect(false, s"$msgHeader: ${data.name} did not equal $x during interval")
-    //assert(false, s"$msgHeader: ${data.name} did not equal $x during interval")
+    tester.expect(false, s"$msgHeader: ${data.name} did not equal $x during interval ($currentCycle > $targetCycleMax)")
+    assert(false, s"$msgHeader: ${data.name} did not equal $x during interval ($currentCycle > $targetCycleMax)")
   }
   
   /**

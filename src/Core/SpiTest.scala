@@ -4,18 +4,7 @@ import Chisel._
 import Core._
 import FlexpretTests._
 
-class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 100000) {
-  def bitInv(x: Int): Int = {
-    if (x == 0) {
-      1
-    } else if (x == 1) {
-      0
-    } else {
-      assert(false)
-      0
-    }
-  }
-  
+class SpiTest(c: CommandResponseQueueCore) extends FlexPretTester(c) {
   /**
    * Expect a SPI wavefrom from a SPI master.
    * @param[in] frequency: cycles between a clock period (two transitions).
@@ -109,34 +98,6 @@ class SpiTest(c: CommandResponseQueueCore) extends TemporalTester(c, 50000000, 1
                                    betweenConstants=Map(clkLine -> currentClock))
       println(s"Cycle $cycle, clk ${peek(clkLine)}, MOSI ${peek(mosiLine)}")
     }
-  }
-  
-  /*
-   * Sends a command to the core's peripheral bus. Returns once the command
-   * queue is empty (i.e. the command has been read).
-   */
-  def sendCommand(command: BigInt, desc: String = "") {
-    val msgHeader = s"sendCommand ($command): $desc"
-    stepUntilEqual(c.io.commandIn.ready, 1)
-    poke(c.io.commandIn.bits, command)
-    poke(c.io.commandIn.valid, 1)
-    step(1)
-    poke(c.io.commandIn.valid, 0)
-    stepUntilEqual(c.commandInQueue.valid, 0)
-  }
-  
-  /*
-   * Reads the next response from the core's peripheral bus. Returns the
-   * response bits, and returns once cycle after (once the data has been
-   * cleared from the queue).
-   */
-  def getResponse(desc: String = ""): BigInt = {
-    stepUntilEqual(c.io.respOut.valid, 1)
-    val rtn = peek(c.io.respOut.bits)
-    poke(c.io.respOut.ready, 1)
-    step(1)
-    poke(c.io.respOut.ready, 0)
-    rtn
   }
   
   poke(c.io.commandIn.valid, 0)

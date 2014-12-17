@@ -227,6 +227,9 @@ object CoreMain {
       case "spiTest" =>
         chiselMainTest(chiselArgs, () => Module(new CommandResponseQueueCore(coreConfig))){
           c => new SpiTest(c)}
+      case "pwmTest" =>
+        chiselMainTest(chiselArgs, () => Module(new CommandResponseQueueCore(coreConfig))){
+          c => new PwmTest(c)}
       case "breakerTest" =>
         chiselMainTest(chiselArgs, () => Module(new CommandResponseQueueCore(coreConfig))){
           c => new IsaTest(c, "../tests/examples/build/emulator/breaker")}

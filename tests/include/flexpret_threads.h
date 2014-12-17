@@ -5,8 +5,10 @@
 #endif
 
 // Added for FlexPRET
+#ifndef NULL
 typedef unsigned int uint32_t;
 #define NULL 0L
+#endif
 
 typedef struct hwthread_state {
     void (*func)();
